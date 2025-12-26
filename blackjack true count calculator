@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Blackjack Sayacı (8 Deste) - Agresif Mod</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --accent: #00d26a;
+            --danger: #f44336;
+            --warn: #ff9800;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1, h2, h3 { margin: 5px 0; text-align: center; }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            display: grid;
+            gap: 15px;
+        }
+
+        /* --- Scoreboard --- */
+        .scoreboard {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .score-box div:first-child { font-size: 0.8rem; color: #888; }
+        .score-box div:last-child { font-size: 1.5rem; font-weight: bold; color: var(--accent); }
+
+        /* --- Strategy Section --- */
+        .strategy-panel {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 5px solid var(--accent);
+        }
+        .inputs-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        select, button.action-btn {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #333;
+            color: white;
+            font-size: 1rem;
+        }
+        .advice-box {
+            background: #333;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 5px;
+            color: var(--warn);
+        }
+        .sub-advice {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-top: 5px;
+            font-weight: normal;
+        }
+
+        /* --- Counting Buttons --- */
+        .counting-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+        .count-btn {
+            padding: 15px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #3d3d3d;
+            color: white;
+            font-weight: bold;
+            transition: transform 0.1s;
+        }
+        .count-btn:active { transform: scale(0.95); }
+        .val-low { border-bottom: 4px solid var(--accent); } /* +1 cards */
+        .val-mid { border-bottom: 4px solid #888; } /* 0 cards */
+        .val-high { border-bottom: 4px solid var(--danger); } /* -1 cards */
+
+        /* --- Undo & History --- */
+        .history-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .history-list {
+            display: flex;
+            gap: 5px;
+        }
+        .history-item {
+            background: #444;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        /* --- Stats Table --- */
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .stats-table th, .stats-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        .stats-table tr { transition: background 0.3s; }
+        .stats-table tbody tr:first-child { background: rgba(0, 210, 106, 0.1); } /* Highlight highest prob */
+
+        /* --- Settings --- */
+        .settings {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-bottom: 5px;
+        }
+        .reset-btn { background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;}
+        
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="settings">
+            <button class="reset-btn" onclick="resetGame()">Yeni Oyun (Reset)</button>
+        </div>
+
+        <div class="scoreboard">
+            <div class="score-box">
+                <div>Running Count</div>
+                <div id="rc-display">0</div>
+            </div>
+            <div class="score-box">
+                <div>True Count (TC)</div>
+                <div id="tc-display">0.0</div>
+            </div>
+            <div class="score-box">
+                <div>Kalan Deste</div>
+                <div id="decks-display">8.0</div>
+            </div>
+        </div>
+
+        <div class="strategy-panel">
+            <h3>Strateji Danışmanı (Agresif - 8 Deste)</h3>
+            <div class="inputs-row">
+                <select id="player-hand">
+                    <option value="" disabled selected>Elim (Toplam)</option>
+                    </select>
+                <select id="dealer-card">
+                    <option value="" disabled selected>Kasa Açık Kartı</option>
+                    </select>
+                <select id="hand-type">
+                    <option value="hard">Hard (Sert)</option>
+                    <option value="soft">Soft (Yumuşak - As'lı)</option>
+                    <option value="pair">Pair (Çift)</option>
+                </select>
+            </div>
+            <div class="advice-box" id="advice-text">
+                Seçim Yapınız
+                <div class="sub-advice" id="sub-advice">Bekleniyor...</div>
+            </div>
+        </div>
+
+        <div class="counting-grid">
+            <button class="count-btn val-low" onclick="countCard(2)">2</button>
+            <button class="count-btn val-low" onclick="countCard(3)">3</button>
+            <button class="count-btn val-low" onclick="countCard(4)">4</button>
+            <button class="count-btn val-low" onclick="countCard(5)">5</button>
+            <button class="count-btn val-low" onclick="countCard(6)">6</button>
+            
+            <button class="count-btn val-mid" onclick="countCard(7)">7</button>
+            <button class="count-btn val-mid" onclick="countCard(8)">8</button>
+            <button class="count-btn val-mid" onclick="countCard(9)">9</button>
+            
+            <button class="count-btn val-high" onclick="countCard(10)">10 / J / Q / K</button>
+            <button class="count-btn val-high" onclick="countCard(11)">A</button>
+        </div>
+
+        <div class="history-panel">
+            <button class="action-btn" onclick="undoLast()">geri al ↩</button>
+            <div class="history-list" id="history-log">
+                </div>
+        </div>
+
+        <div class="strategy-panel">
+            <h3>Kart Olasılıkları</h3>
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th>Kart</th>
+                        <th>Kalan Adet</th>
+                        <th>Geleme İhtimali (%)</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-body">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+<script>
+    // --- Global Variables ---
+    // GÜNCELLEME: 8 Deste Olarak Ayarlandı
+    const NUM_DECKS = 8;
+    
+    let totalCards = NUM_DECKS * 52;
+    let cardsRemaining = totalCards;
+    let runningCount = 0;
+    let trueCount = 0;
+    
+    // Agresiflik Faktörü: Eşik değerini oyuncu lehine bu kadar esnetir.
+    // +4 gerekiyorsa +3'te sinyal verir.
+    const AGGRESSION_MODIFIER = 1; 
+
+    // Deck Composition
+    let deckComp = {};
+    let history = [];
+
+    // --- Initialization ---
+    function initGame() {
+        runningCount = 0;
+        trueCount = 0;
+        cardsRemaining = totalCards;
+        history = [];
+        
+        // Reset deck composition
+        for (let i = 2; i <= 9; i++) deckComp[i] = NUM_DECKS * 4;
+        deckComp[10] = NUM_DECKS * 16; // 10, J, Q, K
+        deckComp[11] = NUM_DECKS * 4;  // Aces
+
+        updateUI();
+        populateDropdowns();
+    }
+
+    // --- Core Logic ---
+    function getCardValue(card) {
+        if (card >= 2 && card <= 6) return 1;
+        if (card >= 7 && card <= 9) return 0;
+        if (card >= 10 || card === 11) return -1;
+        return 0;
+    }
+
+    function countCard(card) {
+        if (cardsRemaining <= 0) return;
+
+        // Add to history
+        history.push(card);
+        if (history.length > 50) history.shift(); // keep memory clean
+
+        // Update counts
+        runningCount += getCardValue(card);
+        deckComp[card]--;
+        cardsRemaining--;
+
+        calculateTrueCount();
+        updateUI();
+    }
+
+    function undoLast() {
+        if (history.length === 0) return;
+        
+        let lastCard = history.pop();
+        
+        // Reverse counts
+        runningCount -= getCardValue(lastCard);
+        deckComp[lastCard]++;
+        cardsRemaining++;
+
+        calculateTrueCount();
+        updateUI();
+    }
+
+    function calculateTrueCount() {
+        let decksLeft = Math.max(0.5, cardsRemaining / 52); 
+        trueCount = runningCount / decksLeft;
+        // Ondalıklı gösterim (precision)
+        trueCount = Math.round(trueCount * 10) / 10;
+    }
+
+    // --- Strategy Engine (Illustrious 18 + Aggressive) ---
+    function getAdvice() {
+        const playerVal = parseInt(document.getElementById('player-hand').value);
+        const dealerCard = parseInt(document.getElementById('dealer-card').value);
+        const type = document.getElementById('hand-type').value;
+
+        if (!playerVal || !dealerCard) return { action: "Veri Bekleniyor...", reason: "" };
+
+        let action = "Bilinmiyor";
+        let reason = "Standart Strateji";
+        let tc = trueCount;
+
+        // --- ILLUSTRIOUS 18 & FAB 4 EXCEPTIONS (AGGRESSIVE) ---
+        
+        // 1. Insurance
+        // Normal: +3, Agresif: +2
+        
+        // 2. 16 vs 10
+        if (playerVal === 16 && dealerCard === 10 && type === 'hard') {
+            if (tc >= (0 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18 (Agresif): TC ${tc} >= -1` };
+        }
+
+        // 3. 15 vs 10
+        if (playerVal === 15 && dealerCard === 10 && type === 'hard') {
+            if (tc >= (4 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18 (Agresif): TC ${tc} >= +3` };
+        }
+
+        // 4. 10-10 (20) vs 5 -> SPLIT
+        if (playerVal === 20 && type === 'pair' && dealerCard === 5) {
+            if (tc >= (5 - AGGRESSION_MODIFIER)) return { action: "SPLIT (BÖL)", reason: `Illustrious 18: TC Yüksek` };
+        }
+
+        // 5. 10-10 (20) vs 6 -> SPLIT
+        if (playerVal === 20 && type === 'pair' && dealerCard === 6) {
+            if (tc >= (4 - AGGRESSION_MODIFIER)) return { action: "SPLIT (BÖL)", reason: `Illustrious 18: TC Yüksek` };
+        }
+
+        // 6. 10 vs 10
+        if (playerVal === 10 && dealerCard === 10 && type === 'hard') {
+            if (tc >= (4 - AGGRESSION_MODIFIER)) return { action: "DOUBLE (İKİYE KATLA)", reason: `Illustrious 18: Güçlü El` };
+        }
+
+        // 7. 12 vs 3
+        if (playerVal === 12 && dealerCard === 3 && type === 'hard') {
+            if (tc >= (2 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+            else return { action: "HIT (ÇEK)", reason: "Basic Strategy" };
+        }
+
+        // 8. 12 vs 2
+        if (playerVal === 12 && dealerCard === 2 && type === 'hard') {
+            if (tc >= (3 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+            else return { action: "HIT (ÇEK)", reason: "Basic Strategy" };
+        }
+
+        // 9. 11 vs A
+        if (playerVal === 11 && dealerCard === 11 && type === 'hard') {
+            if (tc >= (1 - AGGRESSION_MODIFIER)) return { action: "DOUBLE (İKİYE KATLA)", reason: `Illustrious 18` };
+        }
+
+        // 10. 9 vs 2
+        if (playerVal === 9 && dealerCard === 2 && type === 'hard') {
+            if (tc >= (1 - AGGRESSION_MODIFIER)) return { action: "DOUBLE (İKİYE KATLA)", reason: `Illustrious 18` };
+        }
+
+        // 11. 10 vs A
+        if (playerVal === 10 && dealerCard === 11 && type === 'hard') {
+            if (tc >= (4 - AGGRESSION_MODIFIER)) return { action: "DOUBLE (İKİYE KATLA)", reason: `Illustrious 18` };
+        }
+        
+        // 12. 9 vs 7
+        if (playerVal === 9 && dealerCard === 7 && type === 'hard') {
+            if (tc >= (3 - AGGRESSION_MODIFIER)) return { action: "DOUBLE (İKİYE KATLA)", reason: `Illustrious 18` };
+        }
+
+        // 13. 16 vs 9
+        if (playerVal === 16 && dealerCard === 9 && type === 'hard') {
+            if (tc >= (5 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+        }
+
+        // 14. 13 vs 2
+        if (playerVal === 13 && dealerCard === 2 && type === 'hard') {
+            if (tc >= (-1 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+            else return { action: "HIT (ÇEK)", reason: "Negatif Count" };
+        }
+
+        // 15. 12 vs 4
+        if (playerVal === 12 && dealerCard === 4 && type === 'hard') {
+            if (tc >= (0 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+             else return { action: "HIT (ÇEK)", reason: "Negatif Count" };
+        }
+
+        // 16. 12 vs 5
+        if (playerVal === 12 && dealerCard === 5 && type === 'hard') {
+             if (tc >= (-2 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+             else return { action: "HIT (ÇEK)", reason: "Çok Negatif Count" };
+        }
+
+        // 17. 12 vs 6
+        if (playerVal === 12 && dealerCard === 6 && type === 'hard') {
+             if (tc >= (-1 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+             else return { action: "HIT (ÇEK)", reason: "Negatif Count" };
+        }
+
+        // 18. 13 vs 3
+        if (playerVal === 13 && dealerCard === 3 && type === 'hard') {
+             if (tc >= (-2 - AGGRESSION_MODIFIER)) return { action: "STAND (DUR)", reason: `Illustrious 18` };
+             else return { action: "HIT (ÇEK)", reason: "Çok Negatif Count" };
+        }
+
+        // --- BASIC STRATEGY FALLBACK ---
+        
+        if (type === 'hard') {
+            if (playerVal >= 17) action = "STAND (DUR)";
+            else if (playerVal <= 8) action = "HIT (ÇEK)";
+            else if (playerVal === 11) action = "DOUBLE (Yoksa Hit)";
+            else if (playerVal === 10) action = (dealerCard < 10) ? "DOUBLE (Yoksa Hit)" : "HIT (ÇEK)";
+            else if (playerVal === 9) action = (dealerCard >= 3 && dealerCard <= 6) ? "DOUBLE (Yoksa Hit)" : "HIT (ÇEK)";
+            else if (playerVal >= 12 && playerVal <= 16) {
+                if (dealerCard >= 7) action = "HIT (ÇEK)";
+                else action = "STAND (DUR)"; 
+            }
+        } 
+        else if (type === 'soft') {
+            if (playerVal >= 20) action = "STAND (DUR)"; 
+            else if (playerVal === 19) action = (dealerCard === 6) ? "DOUBLE (Yoksa Stand)" : "STAND (DUR)";
+            else if (playerVal === 18) { 
+                if (dealerCard >= 2 && dealerCard <= 8) action = "DOUBLE (Yoksa Stand)";
+                else action = "HIT (ÇEK)"; 
+                if (dealerCard === 2 || dealerCard === 7 || dealerCard === 8) action = "STAND (DUR)"; 
+            }
+            else { 
+                action = "HIT (ÇEK)"; 
+                if (playerVal === 17 && dealerCard >= 3 && dealerCard <= 6) action = "DOUBLE (Yoksa Hit)";
+                if (playerVal >= 15 && playerVal <= 16 && dealerCard >= 4 && dealerCard <= 6) action = "DOUBLE (Yoksa Hit)";
+                if (playerVal >= 13 && playerVal <= 14 && dealerCard >= 5 && dealerCard <= 6) action = "DOUBLE (Yoksa Hit)";
+            }
+        }
+        else if (type === 'pair') {
+            if (playerVal === 22 || playerVal === 16) action = "SPLIT (BÖL)"; 
+            else if (playerVal === 20) action = "STAND (DUR)";
+            else if (playerVal === 18) action = (dealerCard === 7 || dealerCard === 10 || dealerCard === 11) ? "STAND (DUR)" : "SPLIT (BÖL)";
+            else if (playerVal === 14) action = (dealerCard <= 7) ? "SPLIT (BÖL)" : "HIT (ÇEK)";
+            else if (playerVal === 12) action = (dealerCard <= 6) ? "SPLIT (BÖL)" : "HIT (ÇEK)"; 
+            else if (playerVal === 10) action = "DOUBLE (Yoksa Hit)";
+            else if (playerVal === 8) action = "HIT (ÇEK)";
+            else if (playerVal === 6 || playerVal === 4) action = (dealerCard <= 7) ? "SPLIT (BÖL)" : "HIT (ÇEK)";
+        }
+
+        return { action: action, reason: reason };
+    }
+
+    // --- UI Updates ---
+    function updateUI() {
+        document.getElementById('rc-display').innerText = runningCount;
+        document.getElementById('tc-display').innerText = trueCount;
+        let decksLeft = Math.max(0, cardsRemaining / 52).toFixed(1);
+        document.getElementById('decks-display').innerText = decksLeft;
+
+        // Update History Log
+        const log = document.getElementById('history-log');
+        log.innerHTML = '';
+        history.slice(-5).reverse().forEach(card => {
+            const span = document.createElement('span');
+            span.className = 'history-item';
+            let displayVal = card;
+            if (card === 11) displayVal = 'A';
+            if (card === 10) displayVal = '10/Resim';
+            span.innerText = displayVal;
+            log.appendChild(span);
+        });
+
+        // Update Stats List (Sorted)
+        updateStatsTable();
+
+        // Trigger Advice Update
+        updateAdvice();
+    }
+
+    function updateStatsTable() {
+        const tbody = document.getElementById('stats-body');
+        tbody.innerHTML = '';
+
+        let stats = [];
+        for (let i = 2; i <= 11; i++) {
+            stats.push({
+                card: i,
+                count: deckComp[i],
+                prob: (deckComp[i] / cardsRemaining) * 100
+            });
+        }
+
+        stats.sort((a, b) => b.prob - a.prob);
+
+        stats.forEach(item => {
+            const row = document.createElement('tr');
+            let name = item.card;
+            if (item.card === 11) name = 'As (A)';
+            else if (item.card === 10) name = '10, J, Q, K';
+            
+            row.innerHTML = `
+                <td>${name}</td>
+                <td>${item.count}</td>
+                <td>%${item.prob.toFixed(2)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function updateAdvice() {
+        const result = getAdvice();
+        const adviceBox = document.getElementById('advice-text');
+        const subAdvice = document.getElementById('sub-advice');
+        
+        adviceBox.innerText = result.action;
+        subAdvice.innerText = result.reason;
+        
+        adviceBox.appendChild(subAdvice); 
+        
+        if (result.action.includes("HIT")) adviceBox.style.color = "#00d26a";
+        else if (result.action.includes("STAND")) adviceBox.style.color = "#f44336";
+        else if (result.action.includes("DOUBLE")) adviceBox.style.color = "#2196f3";
+        else if (result.action.includes("SPLIT")) adviceBox.style.color = "#ff9800";
+        else adviceBox.style.color = "#aaa";
+    }
+
+    function populateDropdowns() {
+        const pSelect = document.getElementById('player-hand');
+        for (let i = 4; i <= 21; i++) {
+            let opt = document.createElement('option');
+            opt.value = i;
+            opt.innerText = i;
+            pSelect.appendChild(opt);
+        }
+
+        const dSelect = document.getElementById('dealer-card');
+        for (let i = 2; i <= 11; i++) {
+            let opt = document.createElement('option');
+            opt.value = i;
+            opt.innerText = i === 11 ? 'A' : i;
+            dSelect.appendChild(opt);
+        }
+
+        document.getElementById('player-hand').addEventListener('change', updateAdvice);
+        document.getElementById('dealer-card').addEventListener('change', updateAdvice);
+        document.getElementById('hand-type').addEventListener('change', updateAdvice);
+    }
+
+    function resetGame() {
+        if(confirm("Bütün sayım sıfırlanacak. Emin misin?")) {
+            initGame();
+        }
+    }
+
+    initGame();
+
+</script>
+
+</body>
+</html>
